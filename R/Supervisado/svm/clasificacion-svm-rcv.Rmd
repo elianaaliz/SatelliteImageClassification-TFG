@@ -1,0 +1,201 @@
+---
+title: "Clasificación de imágenes con SVM"
+output: html_notebook
+---
+
+# Librerias aplicadas
+
+```{r}
+library(caret)
+library(raster)
+```
+
+# Carga de las bandas de imágenes satelitales.
+
+```{r}
+band1 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B1.TIF")
+band2 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B2.TIF")
+band3 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B3.TIF")
+band4 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B4.TIF")
+band5 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B5.TIF")
+band6 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B6.TIF")
+band7 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B7.TIF")
+band10 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B10.TIF")
+band11 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B11.TIF")
+
+roma_rst_lan <- brick(band1,band2,band3,band4,band5,band6,band7,band10,band11)
+names(roma_rst_lan) <- c(paste("Banda",1:7,sep=""),"Banda10","Banda11")
+```
+
+# Procesado de datos
+
+```{r}
+#Carga de muestras de entrenamiento
+rstTrainroma <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/DataTraining/rome_lcz_GT.tif")
+
+# Remover ceros (fondo NA)
+rstTrainroma[rstTrainroma==0] <- NA
+
+# Convertir a tipo discreto
+rstTrainroma <- ratify(rstTrainroma)
+
+# Cambiamos el nombre
+names(rstTrainroma) <- "layer"
+
+#Muestras de valores
+table(values(rstTrainroma))
+
+# Eliminación de NAs 
+rstDFlanroma.df <- na.omit(values(stack(rstTrainroma, roma_rst_lan)))
+
+cols <- c("#fde725","#b5de2b", "#6ece58","#35b779", "#1f9e89","#26828e", "#31688e", "#3e4989", "#482878", "#440154")
+plot(rstTrainroma, main="Muestras de entrenamiento de Roma", col = cols)
+
+```
+
+# Fase de Clasificación
+
+```{r}
+#Si es la primera vez se ejecuta, sino ya esta guardado los datos del dataframe.
+#write.csv(rstDFlanroma.df,"rstDFRoma.csv", row.names = FALSE)
+
+#Leemos los datos
+samplesLanroma = read.csv("rstDFRoma.csv")
+
+# Se divide las muestras en 70 y 30
+trainx = list(0)
+evalx = list(0)
+for (i in 1:17){ # se itera en todas las posibles categorías
+  cls = samplesLanroma[samplesLanroma$layer == i,]
+  smpl <- floor(0.70 * nrow(cls))
+  tt <- sample(seq_len(nrow(cls)), size = smpl)
+  trainx[[i]] <- cls[tt,]
+  evalx[[i]] <- cls[-tt,]
+}
+
+
+# Se combina en dataframe referenciados s entrenamiento y evaluación
+trn = do.call(rbind, trainx) 
+eva = do.call(rbind, evalx)
+```
+
+# Algoritmo SVM
+
+```{r}
+# Definiendo el control del entrenamiento
+fitControl <- trainControl(method = "repeatedcv", # repeated cross-validation of the training data
+                   number = 10, # number of folds
+                   repeats = 5) # view the training iterations
+
+
+# Entrenamiento con svm
+svm_roma_model<- caret::train(x = trn[,(2:ncol(trn))], y = as.factor(trn$layer),
+                      method = "svmRadial", metric="Accuracy", 
+                      trControl = fitControl, 
+                      preProcess = c("center", "scale"),
+                      tuneLength = 10)
+# Entrenamiento modelo 2
+svm_grid <- expand.grid(sigma=seq(from = 0.01, to = 0.10, by = 0.02),
+                        C=seq(from = 2, to = 10, by = 2))
+
+svm_roma_model2<- caret::train(x = trn[,(2:ncol(trn))], y = as.factor(trn$layer),
+                      method = "svmRadialSigma", metric="Accuracy", 
+                      trControl = fitControl,
+                      preProcess = c("center", "scale"),
+                      tuneGrid = svm_grid)
+
+```
+
+# Exploración del modelo
+
+```{r}
+#Información modelo svm
+print(svm_roma_model)
+
+print(svm_roma_model2) #modelo 2
+
+#Gráfica del modelo svm
+plot(svm_roma_model)
+
+plot(svm_roma_model2) #modelo 2
+```
+
+
+# Evaluación del modelo 1.
+
+```{r}
+pred_svm_roma_model<- predict(svm_roma_model,newdata = eva[,-1])
+
+cm <- confusionMatrix(data = pred_svm_roma_model, as.factor(eva$layer))
+cm
+```
+
+# Representación de Matriz de confusión
+
+```{r}
+
+cm_d <- as.data.frame(cm$table)
+
+cm_st <-data.frame(cm$overall)
+
+cm_st$cm.overall <- round(cm_st$cm.overall,2)
+
+cm_p <- as.data.frame(prop.table(cm$table))
+cm_d$Perc <- round(cm_p$Freq*100,2)
+
+# dibujando la matriz
+ggplot(data = cm_d, aes(x = Prediction , y =  Reference, fill = Freq))+
+  geom_tile() +
+  geom_text(aes(label = paste("",Freq,",",Perc,"%")), color = 'black', size = 2) +
+  theme_minimal() +
+  scale_fill_gradient2(low = "white", mid = "yellow", high = "red") +
+  scale_color_gradient2(low = "white", mid = "yellow", high = "red")
+```
+
+# Evaluación del modelo 2.
+
+```{r}
+pred_svm_roma_model2<- predict(svm_roma_model2,newdata = eva[,-1])
+
+cm <- confusionMatrix(data = pred_svm_roma_model2, as.factor(eva$layer))
+cm
+```
+
+# Representación de Matriz de confusión
+
+```{r}
+
+cm_d <- as.data.frame(cm$table)
+
+cm_st <-data.frame(cm$overall)
+
+cm_st$cm.overall <- round(cm_st$cm.overall,2)
+
+cm_p <- as.data.frame(prop.table(cm$table))
+cm_d$Perc <- round(cm_p$Freq*100,2)
+
+# dibujando la matriz
+ggplot(data = cm_d, aes(x = Prediction , y =  Reference, fill = Freq))+
+  geom_tile() +
+  geom_text(aes(label = paste("",Freq,",",Perc,"%")), color = 'black', size = 2) +
+  theme_minimal() +
+  scale_fill_gradient2(low = "white", mid = "yellow", high = "red") +
+  scale_color_gradient2(low = "white", mid = "yellow", high = "red")
+```
+
+# Predicción y visualización del modelo 1.
+
+```{r}
+classi_svm_model_roma <- raster::predict(roma_rst_lan, model=svm_roma_model)
+plot(classi_svm_model_roma, main="Clasificación SVM Modelo 1",col = cols)
+```
+
+# Predicción y visualización del modelo 2.
+
+```{r}
+classi_svm_model_roma2 <- raster::predict(roma_rst_lan, model=svm_roma_model2)
+plot(classi_svm_model_roma2, main="Clasificación SVM Modelo 2",col = cols)
+```
+
+
+
