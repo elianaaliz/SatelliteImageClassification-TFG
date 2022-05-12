@@ -1,0 +1,150 @@
+---
+title: "Clasificación de imágenes con Algoritmos Supervisados"
+output: html_notebook
+---
+
+# Librerias aplicadas
+
+```{r}
+library(caret)
+library(raster)
+```
+
+# Carga de las bandas de imágenes satelitales.
+
+```{r}
+band1 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B1.TIF")
+band2 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B2.TIF")
+band3 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B3.TIF")
+band4 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B4.TIF")
+band5 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B5.TIF")
+band6 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B6.TIF")
+band7 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B7.TIF")
+band10 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B10.TIF")
+band11 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B11.TIF")
+
+roma_rst_lan <- brick(band1,band2,band3,band4,band5,band6,band7,band10,band11)
+names(roma_rst_lan) <- c(paste("Banda",1:7,sep=""),"Banda10","Banda11")
+```
+
+# Procesado de datos
+
+```{r}
+#Carga de muestras de entrenamiento
+rstTrainroma <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/DataTraining/rome_lcz_GT.tif")
+
+# Remover ceros (fondo NA)
+rstTrainroma[rstTrainroma==0] <- NA
+
+# Convertir a tipo discreto
+rstTrainroma <- ratify(rstTrainroma)
+
+# Cambiamos el nombre
+names(rstTrainroma) <- "layer"
+
+#Muestras de valores
+table(values(rstTrainroma))
+
+# Eliminación de NAs 
+rstDFlanroma.df <- na.omit(values(stack(rstTrainroma, roma_rst_lan)))
+
+# Viualizamos las muestras
+cols <- c("#fde725","#b5de2b", "#6ece58","#35b779", "#1f9e89","#26828e", "#31688e", "#3e4989", "#482878", "#440154")
+plot(rstTrainroma, main="Muestras de entrenamiento de Roma", col = cols)
+
+
+```
+
+# Fase de Clasificación
+
+```{r}
+#Si es la primera vez se ejecuta, sino ya esta guardado los datos del dataframe.
+#write.csv(rstDFlanroma.df,"rstDFRoma.csv", row.names = FALSE)
+
+#Leemos los datos
+samplesLanroma = read.csv("rstDFRoma.csv")
+
+# Se divide las muestras en 70 y 30
+trainx = list(0)
+evalx = list(0)
+for (i in 1:17){ # se itera en todas las posibles categorías
+  cls = samplesLanroma[samplesLanroma$layer == i,]
+  smpl <- floor(0.70 * nrow(cls))
+  tt <- sample(seq_len(nrow(cls)), size = smpl)
+  trainx[[i]] <- cls[tt,]
+  evalx[[i]] <- cls[-tt,]
+}
+
+
+# Se combina en dataframe referenciados s entrenamiento y evaluación
+trn = do.call(rbind, trainx) 
+eva = do.call(rbind, evalx)
+```
+
+# Entrenamiento de Algoritmos
+
+```{r}
+# Definiendo el control del entrenamiento
+tcControl <- trainControl(method = "repeatedcv", 
+                                       number = 10,
+                                       repeats = 5)
+
+
+# Entrenamiento con svm
+svm_m<- caret::train(x = trn[,(2:ncol(trn))], y = as.factor(trn$layer),
+                      method = "svmRadial", metric="Accuracy", 
+                      trControl = tcControl, 
+                      preProcess = c("center", "scale"))
+
+# Entrenamiento con rf
+rf_m<- caret::train(x = trn[,(2:ncol(trn))], y = as.factor(trn$layer),
+                        method = "rf", 
+                        metric="Accuracy", 
+                        trControl = tcControl,
+                        preProcess = c("center", "scale"))
+
+# Entrenamiento con Knn
+knn_m<- caret::train(x = trn[,(2:ncol(trn))], y = as.factor(trn$layer),
+               method = "kknn",
+               metric="Accuracy",
+               preProcess = c("center", "scale"),
+               trControl = tcControl)
+
+#Entrenamiento con redes neuronales
+nnet_m <- caret::train(x = trn[,(2:ncol(trn))], y = as.factor(trn$layer),
+                               method = "nnet", 
+                               metric="Accuracy", 
+                               preProcess = c("center", "scale"),
+                               trControl = tcControl)
+
+```
+
+# Exploración de los modelo de ajuste
+
+```{r}
+model_list <- list(rf = rf_m, svm = svm_m, nnet = nnet_m, knn = knn_m)
+
+results <- resamples(model_list)
+
+summary(results)
+
+# Plotea 
+bwplot(results)
+
+```
+
+# Predicción y visualización de los modelos
+
+```{r}
+predict_rf <- raster::predict(roma_rst_lan, model=rf_m)
+predict_svm <- raster::predict(roma_rst_lan, model=svm_m)
+predict_nnet <- raster::predict(roma_rst_lan, model=nnet_m)
+predict_knn <- raster::predict(roma_rst_lan, model=knn_m)
+
+rstack = stack(predict_rf, predict_svm, predict_nnet, predict_knn) # combine the layers into one stack
+names(rstack) = c("Random Forest", "SVM", "Redes Neuronales", "KNN") # name the stack
+plot(rstack, col = cols)
+```
+
+
+

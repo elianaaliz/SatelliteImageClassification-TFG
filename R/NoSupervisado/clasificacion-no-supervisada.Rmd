@@ -1,0 +1,177 @@
+---
+title: "Clasificación No Supervisada(K-means y CLARA)"
+output: html_notebook
+---
+
+# Procesamiento de Datos
+
+```{r}
+library(raster)
+band1 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B1.TIF")
+band2 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B2.TIF")
+band3 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B3.TIF")
+band4 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B4.TIF")
+band5 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B5.TIF")
+band6 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B6.TIF")
+band7 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B7.TIF")
+band10 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B10.TIF")
+band11 <- raster("/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/capturas-landsat/roma/LC81910312013208LGN00/LC81910312013208LGN00_B11.TIF")
+
+roma_rst_lan <- brick(band1,band2,band3,band4,band5,band6,band7,band10,band11)
+names(roma_rst_lan) <- c(paste("Banda",1:7,sep=""),"Banda10","Banda11")
+
+plot(roma_rst_lan)
+```
+
+# Algoritmo K-means y CLARA
+```{r}
+library(cluster)
+
+rstDF <- values(roma_rst_lan)
+idx <- complete.cases(rstDF)
+
+# Inicializamos los objetos raster finales
+rstKM <- raster(roma_rst_lan[[1]])
+rstCLARA <- raster(roma_rst_lan[[1]])
+
+for(nClust in 2:10){
+  
+  cat("-> Agrupación con nClust =",nClust,"......")
+  
+  # Aplicamos k-means
+  km <- kmeans(rstDF[idx,], centers = nClust, iter.max = 50)
+  
+  # Aplicamos CLARA (Distancia manhattan)
+  cla <- clara(rstDF[idx, ], k = nClust, metric = "manhattan", pamLike = TRUE)
+  
+  kmClust <- vector(mode = "integer", length = ncell(roma_rst_lan))
+  claClust <- vector(mode = "integer", length = ncell(roma_rst_lan))
+  
+  kmClust[!idx] <- NA
+  kmClust[idx] <- km$cluster
+  
+  claClust[!idx] <- NA
+  claClust[idx] <- cla$clustering
+  
+  tmpRstKM <- raster(roma_rst_lan[[1]])
+  tmpRstCLARA <- raster(roma_rst_lan[[1]])
+
+  values(tmpRstKM) <- kmClust
+  values(tmpRstCLARA) <- claClust
+  
+  # Apilamos resultados
+  if(nClust==2){
+    rstKM    <- tmpRstKM
+    rstCLARA <- tmpRstCLARA
+  }else{
+    rstKM    <- stack(rstKM, tmpRstKM)
+    rstCLARA <- stack(rstCLARA, tmpRstCLARA)
+  }
+  
+  cat(" Fin!\n\n")
+}
+
+# Write the clustering solutions for each algorithm
+writeRaster(rstKM,"/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/TFG-For-Github/hongkong_KMeans.tif", overwrite=TRUE)
+writeRaster(rstCLARA,"/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/TFG-For-Github/hongkong_CLARA.tif", overwrite=TRUE)
+
+# Cambiamos los nombres
+names(rstKM) <- c(paste("Cluster",2:10,sep=""))
+names(rstCLARA) <- c(paste("Cluster",2:10,sep=""))
+plot(rstKM)
+plot(rstCLARA)
+```
+
+# Evaluación de los resultados
+
+```{r}
+library(clusterCrit)
+
+
+# Dataframe en conjunto guarda los resultados de inddice de silueta de k-means y clara 
+clustPerfSI <- data.frame(nClust = 2:10, SI_KM = NA, SI_CLARA = NA)
+
+
+for(i in 1:nlayers(rstKM)){ # Itera
+  
+  cat("-> Evaluando agrupaciones para nClust =",(2:10)[i],"......")
+  
+  # Extrae muestra aleatoria , de tamaño 1500
+  cellIdx_RstKM <- sampleStratified(rstKM[[i]], size = 1500)
+  cellIdx_rstCLARA <- sampleStratified(rstCLARA[[i]], size = 1500)
+  
+
+  rstDFStRS_KM <- rstDF[cellIdx_RstKM[,1], ]
+  rstDFStRS_CLARA <- rstDF[cellIdx_rstCLARA[,1], ]
+  
+  rstDFStRS_KM[] <- sapply(rstDFStRS_KM, as.numeric)
+  rstDFStRS_CLARA[] <- sapply(rstDFStRS_CLARA, as.numeric)
+  
+  # Calculo del indice de silueta para: 
+  #    
+  # K-means
+  clCritKM <- intCriteria(traj = rstDFStRS_KM, 
+                          part = as.integer(cellIdx_RstKM[,2]), 
+                          crit = "Silhouette")
+  # CLARA
+  clCritCLARA <- intCriteria(traj = rstDFStRS_CLARA, 
+                             part = as.integer(cellIdx_rstCLARA[,2]), 
+                             crit = "Silhouette")
+  
+  # Se escriben los resultados
+  clustPerfSI[i, "SI_KM"]    <- clCritKM[[1]][1]
+  clustPerfSI[i, "SI_CLARA"] <- clCritCLARA[[1]][1]
+  
+  cat(" Fin!\n\n")
+  
+}
+
+```
+
+# Análisis de resultados
+```{r}
+##guardariamos en un csv
+write.csv(clustPerfSI, file = "/Users/elianaalizchuquillanquijulcapari/Documents/workspace-r/demos/clustPerfSI.csv", row.names = FALSE)
+
+
+#tabla de resultados
+knitr::kable(clustPerfSI, digits = 3, align = "c", 
+             col.names = c("#clusters","Avg. Silhouette (k-means)","Avg. Silhouette (CLARA)"))
+
+
+#grafico de comparacion entre los algoritmos
+plot(clustPerfSI[,1], clustPerfSI[,2], 
+     xlim = c(2,10), ylim = range(clustPerfSI[,2:3]), type = "n", 
+     ylab="Avg. Silhouette Index", xlab="# of clusters",
+     main="Silhouette index by # of clusters")
+
+# Plot Avg Silhouette values across # of clusters for K-means
+lines(clustPerfSI[,1], clustPerfSI[,2], col="red")
+# Plot Avg Silhouette values across # of clusters for CLARA
+lines(clustPerfSI[,1], clustPerfSI[,3], col="blue")
+
+# Grid lines
+abline(v = 1:13, lty=2, col="light grey")
+abline(h = seq(0.30,0.44,0.02), lty=2, col="light grey")
+
+legend("topright", legend=c("K-means","CLARA"), col=c("red","blue"), lty=1, lwd=1)
+```
+
+# Visualización de mejores agrupamientos
+
+```{r}
+
+plot(rstKM[[3]])
+title("K-mean (4 clusters) mejor agrupamiento")
+
+plot(rstCLARA[[3]])
+title("CLARA (4 clusters)")
+
+
+plot(rstCLARA[[5]])
+title("CLARA (6 clusters) mejor agrupamiento")
+
+plot(rstKM[[5]])
+title("K-mean (6 clusters)")
+
+```
