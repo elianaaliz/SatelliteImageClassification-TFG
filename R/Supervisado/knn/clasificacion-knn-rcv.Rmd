@@ -149,11 +149,10 @@ cm_d$Perc <- round(cm_p$Freq*100,2)
 
 # dibujando la matriz
 ggplot(data = cm_d, aes(x = Prediction , y =  Reference, fill = Freq))+
-  geom_tile() +
-  geom_text(aes(label = paste("",Freq,",",Perc,"%")), color = 'black', size = 2) +
+  geom_tile(color = "white", lwd = 0.5) +
+  geom_text(aes(label = paste("",Freq)), color = 'white', size = 3.5)+ 
   theme_minimal() +
-  scale_fill_gradient2(low = "white", mid = "yellow", high = "red") +
-  scale_color_gradient2(low = "white", mid = "yellow", high = "red")
+  ggtitle("Matriz de Confusión")
 ```
 
 # Evaluación del modelo 2.
@@ -181,11 +180,10 @@ cm_d$Perc <- round(cm_p$Freq*100,2)
 
 # dibujando la matriz
 ggplot(data = cm_d, aes(x = Prediction , y =  Reference, fill = Freq))+
-  geom_tile() +
-  geom_text(aes(label = paste("",Freq,",",Perc,"%")), color = 'black', size = 2) +
+  geom_tile(color = "white", lwd = 0.5) +
+  geom_text(aes(label = paste("",Freq)), color = 'white', size = 3.5)+ 
   theme_minimal() +
-  scale_fill_gradient2(low = "white", mid = "yellow", high = "red") +
-  scale_color_gradient2(low = "white", mid = "yellow", high = "red")
+  ggtitle("Matriz de Confusión")
 ```
 
 # Predicción y visualización Modelo 1.
