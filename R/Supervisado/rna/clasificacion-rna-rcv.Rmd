@@ -98,7 +98,8 @@ nnet_model_roma <- caret::train(x = trn[,(2:ncol(trn))], y = as.factor(trn$layer
                                maxit = 100,
                                tuneGrid = nnet_grid,
                                preProcess = c("center", "scale"),
-                               trControl = fitControl)
+                               trControl = fitControl,
+                               trace = FALSE)
 
 nnet_grid2 = expand.grid(size = seq(from = 2, to = 10, by = 2), 
                         decay = seq(from = 0.1, to = 0.5, by = 0.1))
@@ -108,7 +109,8 @@ nnet_model_roma2 <- caret::train(x = trn[,(2:ncol(trn))], y = as.factor(trn$laye
                                maxit = 100,
                                tuneGrid = nnet_grid2,
                                preProcess = c("center", "scale"),
-                               trControl = fitControl)
+                               trControl = fitControl,
+                               trace = FALSE)
 
 ```
 
@@ -149,7 +151,6 @@ cm
 # Matriz de confusión modelo 1
 
 ```{r}
-
 cm_d <- as.data.frame(cm$table)
 
 cm_st <-data.frame(cm$overall)
@@ -161,11 +162,10 @@ cm_d$Perc <- round(cm_p$Freq*100,2)
 
 # dibujando la matriz
 ggplot(data = cm_d, aes(x = Prediction , y =  Reference, fill = Freq))+
-  geom_tile() +
-  geom_text(aes(label = paste("",Freq,",",Perc,"%")), color = 'black', size = 2) +
+  geom_tile(color = "white", lwd = 0.5) +
+  geom_text(aes(label = paste("",Freq)), color = 'white', size = 3.5)+ 
   theme_minimal() +
-  scale_fill_gradient2(low = "white", mid = "yellow", high = "red") +
-  scale_color_gradient2(low = "white", mid = "yellow", high = "red")
+  ggtitle("Matriz de Confusión")
 ```
 
 # Evaluación del modelo 2
@@ -181,7 +181,6 @@ cm
 # Matriz de confusión modelo 2
 
 ```{r}
-
 cm_d <- as.data.frame(cm$table)
 
 cm_st <-data.frame(cm$overall)
@@ -193,11 +192,10 @@ cm_d$Perc <- round(cm_p$Freq*100,2)
 
 # dibujando la matriz
 ggplot(data = cm_d, aes(x = Prediction , y =  Reference, fill = Freq))+
-  geom_tile() +
-  geom_text(aes(label = paste("",Freq,",",Perc,"%")), color = 'black', size = 2) +
+  geom_tile(color = "white", lwd = 0.5) +
+  geom_text(aes(label = paste("",Freq)), color = 'white', size = 3.5)+ 
   theme_minimal() +
-  scale_fill_gradient2(low = "white", mid = "yellow", high = "red") +
-  scale_color_gradient2(low = "white", mid = "yellow", high = "red")
+  ggtitle("Matriz de Confusión")
 ```
 
 # Predicción y visualización Modelo 1.
